@@ -156,6 +156,28 @@ MIT License. See `LICENSE` for details.
 * React Force Graph – Graph visualization
 * D3.js – Force simulation
 
+# VulLink API
+
+A FastAPI-based REST API for the VulLink research project, focused on vulnerability linking and analysis.
+
+## Features
+
+- RESTful API for vulnerability data access and analysis
+- Documented endpoints with Swagger UI
+- Structured vulnerability data models
+- Scalable architecture for research and production use
+
+## Quick Start
+
+1. Clone the repository
+2. Create virtual environment with Python=3.12.4 with `python -m venv venv` 
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the development server: `npx dotenv-cli -e ..\.env.development -- uvicorn app.main:app --reload` (to read global .env file)
+5. Test the endpoints with `$env:PYTHONPATH = "."; npx dotenv-cli -e ..\.env.development -- python tests/test_endpoints.py`
+6. Access the API documentation at `http://localhost:8000/docs`
+
+## Deployment
+Detailed deployment instructions for VPS environments are included in the `deployment.md` file.
 ```bash
-npx dotenv-cli -e ..\.env.development -- uvicorn app.main:app --reload
+uvicorn app.main:app --reload
 ```

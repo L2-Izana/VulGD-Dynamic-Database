@@ -122,6 +122,3 @@ def test_embeddings():
 
 if __name__ == "__main__":
     test_embeddings()
-    
-# Run this to read environment variables
-# $env:PYTHONPATH = "."; npx dotenv-cli -e ..\.env.development -- python tests/test_endpoints.py 
