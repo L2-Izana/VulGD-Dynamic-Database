@@ -11,8 +11,8 @@ VULNODES_PROCESSING_SCRIPT=$PROJECT_DIR/VuLink/src/neo4j/vulnodes_preprocessing.
 
 # --- 2. EXTRACT CREDENTIALS FROM .ENV ---
 # This looks for the line starting with NEO4J_USER and grabs the value
-USER=$(grep "NEO4J_USER=" $ENV_FILE | cut -d'=' -f2 | tr -d '\r')
-PASS=$(grep "NEO4J_PASSWORD=" $ENV_FILE | cut -d'=' -f2 | tr -d '\r')
+USER=$(grep "^NEO4J_USER=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '\r')
+PASS=$(grep "^NEO4J_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '\r')
 
 # --- 3. MOVE DATA ---
 echo "Moving CSV files to Neo4j import directory..."
@@ -34,7 +34,7 @@ sleep 10
 
 # 5.1. Clean the VulNodes dataset by python 
 echo "Cleaning VulnerabilityNodes CSV..."
-python $VULNODES_PROCESSING_SCRIPT $VULGD_DATA_DIR
+python3 $VULNODES_PROCESSING_SCRIPT $VULGD_DATA_DIR
 
 echo "Running Cypher import..."
 cypher-shell -u "$USER" -p "$PASS" -f "$CYPHER_SCRIPT"
