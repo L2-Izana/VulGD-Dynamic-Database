@@ -8,8 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from dotenv import load_dotenv
 import platform
-
-load_dotenv()
+from pathlib import Path
 
 router = APIRouter()
 
@@ -17,6 +16,10 @@ MODEL_OPTIONS = ["mpnet", "secbert", "fasttext"]
 
 IS_LINUX = platform.system().lower() == "linux"
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
+env_path = Path(__file__).resolve().parent.parent.parent / ".env.development"
+load_dotenv(dotenv_path=env_path)
+if IS_LINUX:
+    load_dotenv()
 
 if IS_LINUX:
     DATA_DIR = os.getenv("DATA_DIR_LINUX")

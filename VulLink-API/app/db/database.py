@@ -3,9 +3,15 @@ import logging
 from typing import Any, Dict, List
 import os
 from dotenv import load_dotenv
+import platform
+from pathlib import Path
 
 # Load environment variables
-load_dotenv()
+IS_LINUX = platform.system().lower() == "linux"
+env_path = Path(__file__).resolve().parent.parent.parent / ".env.development"
+load_dotenv(dotenv_path=env_path)
+if IS_LINUX:
+    load_dotenv()
 
 class Neo4jDatabase:
     def __init__(self):
