@@ -6,8 +6,8 @@ ENV_FILE=$PROJECT_DIR/.env.development
 VULGD_DATA_DIR=$PROJECT_DIR/data/vulkg
 NEO4J_IMPORT=/var/lib/neo4j/import
 NEO4J_CONF=/etc/neo4j/neo4j.conf
-CYPHER_SCRIPT=$PROJECT_DIR/VuLink/src/neo4j/VulKG_Deployment_Cypher.cypher
-VULNODES_PROCESSING_SCRIPT=$PROJECT_DIR/VuLink/src/neo4j/vulnodes_preprocessing.py
+CYPHER_SCRIPT=$PROJECT_DIR/VulLink/src/neo4j/VulKG_Deployment_Cypher.cypher
+VULNODES_PROCESSING_SCRIPT=$PROJECT_DIR/VulLink/src/neo4j/vulnodes_preprocessing.py
 
 # --- 2. EXTRACT CREDENTIALS FROM .ENV ---
 # This looks for the line starting with NEO4J_USER and grabs the value
@@ -40,3 +40,10 @@ echo "Running Cypher import..."
 cypher-shell -u "$USER" -p "$PASS" -f "$CYPHER_SCRIPT"
 
 echo "Done!"
+
+# To DELETE the shit out of the database
+# CALL apoc.periodic.iterate(
+#   "MATCH (n) RETURN n",
+#   "DETACH DELETE n",
+#   {batchSize:10000}
+# );

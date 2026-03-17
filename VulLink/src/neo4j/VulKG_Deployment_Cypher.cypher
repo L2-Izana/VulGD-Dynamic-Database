@@ -15,82 +15,95 @@ CALL db.constraints;
 
 //create Entity with properties: Vulnerability (no relationships)
 CALL apoc.periodic.iterate(
-"CALL apoc.load.csv('file:///VulnerabilityNodes_clean.csv' )
- YIELD map AS row RETURN row",
- "WITH 
-	 row.cveID as cveID, 
-	 date(row.publishedDate) AS publishedDate,
-	 row.description_value AS description,
-	 toInteger(row.num_reference) AS numOfReference,
-	 toInteger(row.v2version) AS v2version,
-	 toFloat(row.v2baseScore) AS v2baseScore,
-	 row.v2accessVector AS v2accessVector,
-	 row.v2accessComplexity AS v2accessComplexity,
-	 row.v2authentication AS v2authentication,
-	 row.v2confidentialityImpact AS v2confidentialityImpact,
-	 row.v2integrityImpact AS v2integrityImpact,
-	 row.v2availabilityImpact AS v2availabilityImpact,
-	 row.v2vectorString AS v2vectorString,
-	 toInteger(row.v2impactScore) AS v2impactScore,
-	 toInteger(row.v2exploitabilityScore) AS v2exploitabilityScore,
-	 toBoolean(row.v2userInteractionRequired) AS v2userInteractionRequired,
-	 row.v2severity AS v2severity,
-	 toBoolean(row.v2obtainUserPrivilege) AS v2obtainUserPrivilege,
-	 toBoolean(row.v2obtainAllPrivilege) AS v2obtainAllPrivilege,
-	 toBoolean(row.v2acInsufInfo) AS v2acInsufInfo,
-	 toBoolean(row.v2obtainOtherPrivilege) AS v2obtainOtherPrivilege,
-	 toFloat(row.v3version) AS v3version,
-	 toInteger(row.v3baseScore) AS v3baseScore,
-	 row.v3attackVector AS v3attackVector,
-	 row.v3attackComplexity AS v3attackComplexity,
-	 row.v3privilegesRequired AS v3privilegesRequired,
-	 row.v3userInteraction AS v3userInteraction,
-	 row.v3scope AS v3scope,
-	 row.v3confidentialityImpact AS v3confidentialityImpact,
-	 row.v3integrityImpact AS v3integrityImpact,
-	 row.v3availabilityImpact AS v3availabilityImpact,
-	 row.v3vectorString AS v3vectorString,
-	 toInteger(row.v3impactScore) AS v3impactScore,
-	 toInteger(row.v3exploitabilityScore) AS v3exploitabilityScore,
-	 row.v3baseSeverity AS v3baseSeverity
- MERGE (v:Vulnerability {cveID:cveID})
-    ON CREATE SET 
-	v.publishedDate=publishedDate,
-	v.description =description,
-	v.numOfReference =numOfReference,
-	v.v2version=v2version,
-	v.v2baseScore=v2baseScore,
-	v.v2accessVector=v2accessVector,
-	v.v2accessComplexity=v2accessComplexity,
-	v.v2authentication=v2authentication,
-	v.v2confidentialityImpact=v2confidentialityImpact,
-	v.v2integrityImpact=v2integrityImpact,
-	v.v2availabilityImpact=v2availabilityImpact,
-	v.v2vectorString=v2vectorString,
-	v.v2impactScore=v2impactScore,
-	v.v2exploitabilityScore=v2exploitabilityScore,
-	v.v2userInteractionRequired=v2userInteractionRequired,
-	v.v2severity=v2severity,
-	v.v2obtainUserPrivilege=v2obtainUserPrivilege,
-	v.v2obtainAllPrivilege=v2obtainAllPrivilege,
-	v.v2acInsufInfo=v2acInsufInfo,
-	v.v2obtainOtherPrivilege=v2obtainOtherPrivilege,
-	v.v3version=v3version,
-	v.v3baseScore=v3baseScore,
-	v.v3attackVector=v3attackVector,
-	v.v3attackComplexity=v3attackComplexity,
-	v.v3privilegesRequired=v3privilegesRequired,
-	v.v3userInteraction=v3userInteraction,
-	v.v3scope=v3scope,
-	v.v3confidentialityImpact=v3confidentialityImpact,
-	v.v3integrityImpact=v3integrityImpact,
-	v.v3availabilityImpact=v3availabilityImpact,
-	v.v3vectorString=v3vectorString,
-	v.v3impactScore=v3impactScore,
-	v.v3exploitabilityScore=v3exploitabilityScore,
-	v.v3baseSeverity=v3baseSeverity
- RETURN count(*)",
-{batchSize: 500}
+"
+LOAD CSV WITH HEADERS FROM 'file:///VulnerabilityNodes_FINAL.csv' AS row
+WITH row
+WHERE row.cveID IS NOT NULL AND row.cveID <> ''
+RETURN row
+",
+"
+MERGE (v:Vulnerability {cveID: row.cveID})
+ON CREATE SET
+    v.publishedDate = CASE 
+        WHEN row.publishedDate <> '' THEN date(row.publishedDate) 
+        ELSE NULL 
+    END,
+
+    v.description = row.description_value,
+
+    v.numOfReference = toInteger(row.num_reference),
+    v.v2version = toInteger(row.v2version),
+    v.v2baseScore = toFloat(row.v2baseScore),
+
+    v.v2accessVector = row.v2accessVector,
+    v.v2accessComplexity = row.v2accessComplexity,
+    v.v2authentication = row.v2authentication,
+    v.v2confidentialityImpact = row.v2confidentialityImpact,
+    v.v2integrityImpact = row.v2integrityImpact,
+    v.v2availabilityImpact = row.v2availabilityImpact,
+    v.v2vectorString = row.v2vectorString,
+
+    v.v2impactScore = toFloat(row.v2impactScore),
+    v.v2exploitabilityScore = toFloat(row.v2exploitabilityScore),
+
+    v.v2userInteractionRequired = 
+        CASE row.v2userInteractionRequired
+            WHEN 'true' THEN true
+            WHEN 'false' THEN false
+            ELSE NULL
+        END,
+
+    v.v2severity = row.v2severity,
+
+    v.v2obtainUserPrivilege = 
+        CASE row.v2obtainUserPrivilege
+            WHEN 'true' THEN true
+            WHEN 'false' THEN false
+            ELSE NULL
+        END,
+
+    v.v2obtainAllPrivilege = 
+        CASE row.v2obtainAllPrivilege
+            WHEN 'true' THEN true
+            WHEN 'false' THEN false
+            ELSE NULL
+        END,
+
+    v.v2acInsufInfo = 
+        CASE row.v2acInsufInfo
+            WHEN 'true' THEN true
+            WHEN 'false' THEN false
+            ELSE NULL
+        END,
+
+    v.v2obtainOtherPrivilege = 
+        CASE row.v2obtainOtherPrivilege
+            WHEN 'true' THEN true
+            WHEN 'false' THEN false
+            ELSE NULL
+        END,
+
+    v.v3version = toFloat(row.v3version),
+    v.v3baseScore = toFloat(row.v3baseScore),
+
+    v.v3attackVector = row.v3attackVector,
+    v.v3attackComplexity = row.v3attackComplexity,
+    v.v3privilegesRequired = row.v3privilegesRequired,
+    v.v3userInteraction = row.v3userInteraction,
+    v.v3scope = row.v3scope,
+
+    v.v3confidentialityImpact = row.v3confidentialityImpact,
+    v.v3integrityImpact = row.v3integrityImpact,
+    v.v3availabilityImpact = row.v3availabilityImpact,
+
+    v.v3vectorString = row.v3vectorString,
+
+    v.v3impactScore = toFloat(row.v3impactScore),
+    v.v3exploitabilityScore = toFloat(row.v3exploitabilityScore),
+
+    v.v3baseSeverity = row.v3baseSeverity
+",
+{batchSize: 5000, parallel: true}
 );
 
 
@@ -418,9 +431,6 @@ RETURN COUNT(*); //20689
 MATCH (v1:Vulnerability)
 WHERE size(v1.exploitDate)>1
 RETURN COUNT(*); //2971
-
-// ############## generate fig 1
-CALL db.schema.visualization()
 
 // ############### get results in TABLE IV: Statistics of vulnerability knowledge graph ##############
 MATCH (n:Vulnerability) RETURN count(n); //148609
