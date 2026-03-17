@@ -1,9 +1,9 @@
 #!/bin/bash
-
 set -euo pipefail
-
+# Export React build-time env vars
+export $(grep -v '^#' ./VulLink-Visualizer/.env | xargs)
 echo "========================================="
-echo "VulGD Full Stack Deployment Starting..."
+echo "VulGD Full Stack Full Rebuild Deployment"
 echo "========================================="
 
 PROJECT_DIR=/home/ubuntu/VulGD-Dynamic-Database
@@ -38,35 +38,53 @@ if ! docker info > /dev/null 2>&1; then
 fi
 
 # ---------------------------
-# Deploy
+# Full cleanup
 # ---------------------------
-echo "Stopping existing containers..."
-docker-compose down
-
-echo "Building and starting services..."
-docker-compose up -d --build
+echo "Stopping and removing all containers, images, volumes, and orphans..."
+docker-compose down --rmi all -v --remove-orphans
 
 # ---------------------------
-# Post-deployment check
+# Build everything from scratch
 # ---------------------------
-echo "Checking service health..."
+echo "Building all services from scratch..."
+docker-compose build --no-cache
 
-sleep 5
+# ---------------------------
+# Start services
+# ---------------------------
+echo "Starting services..."
+docker-compose up -d
 
-if curl -s http://localhost:8000/docs > /dev/null; then
-    echo "Backend is up"
-else
-    echo "WARNING: Backend not responding yet"
-fi
+# ---------------------------
+# Wait for backend to be ready
+# ---------------------------
+echo "Waiting for backend to be ready..."
+BACKEND_URL="http://localhost:8000/docs"
+MAX_WAIT=60
+WAITED=0
 
-if curl -s http://localhost | grep -q "<!doctype html>"; then
+until curl -s "$BACKEND_URL" > /dev/null; do
+    sleep 2
+    WAITED=$((WAITED+2))
+    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+        echo "WARNING: Backend not responding after $MAX_WAIT seconds"
+        break
+    fi
+done
+
+# ---------------------------
+# Check frontend
+# ---------------------------
+echo "Checking frontend..."
+FRONTEND_URL="http://localhost"
+if curl -s "$FRONTEND_URL" | grep -q "<!doctype html>"; then
     echo "Frontend is up"
 else
     echo "WARNING: Frontend not responding yet"
 fi
 
 echo "========================================="
-echo "Deployment complete"
+echo "Full rebuild deployment complete"
 echo "Frontend: http://<your-vps-ip>"
 echo "Backend:  http://<your-vps-ip>:8000/docs"
 echo "========================================="

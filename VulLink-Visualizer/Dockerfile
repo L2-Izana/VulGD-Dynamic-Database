@@ -1,7 +1,21 @@
 # ---------------------------
 # Stage 1: Build React App
 # ---------------------------
+# Stage 1: Build React App
 FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Accept build arguments
+ARG REACT_APP_BACKEND_URL
+ARG REACT_APP_NEO4J_URL
+ARG REACT_APP_NEO4J_USER
+ARG REACT_APP_NEO4J_PASSWORD
+
+# Export to environment so React can use them
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+ENV REACT_APP_NEO4J_URL=$REACT_APP_NEO4J_URL
+ENV REACT_APP_NEO4J_USER=$REACT_APP_NEO4J_USER
+ENV REACT_APP_NEO4J_PASSWORD=$REACT_APP_NEO4J_PASSWORD
 
 WORKDIR /app
 
