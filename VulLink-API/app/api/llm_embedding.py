@@ -34,9 +34,9 @@ DIM128_EMBEDDING_DIR = os.path.join(DATA_DIR, DIM128_EMBEDDING)
 DIM32_EMBEDDING_DIR = os.path.join(DATA_DIR, DIM32_EMBEDDING)
 CVEIDS_LIST_PATH = os.path.join(DATA_DIR, CVEIDS_LIST)
 
-assert os.path.exists(DIM128_EMBEDDING_DIR)
-assert os.path.exists(DIM32_EMBEDDING_DIR)
-assert os.path.exists(CVEIDS_LIST_PATH)
+assert os.path.exists(DIM128_EMBEDDING_DIR), f"{DIM128_EMBEDDING_DIR} does not exists"
+assert os.path.exists(DIM32_EMBEDDING_DIR), f"{DIM32_EMBEDDING_DIR} does not exists"
+assert os.path.exists(CVEIDS_LIST_PATH), f"{CVEIDS_LIST_PATH} does not exists"
 
 dim32_data: Dict[str, np.ndarray] = {}
 dim128_data: Dict[str, np.ndarray] = {}
