@@ -1,5 +1,6 @@
 import json
 import os
+from typing import List
 import zipfile
 import neo4j
 import tempfile
@@ -12,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from utils import assert_neo4j_connection
 import wget
 import re
 
@@ -55,87 +57,132 @@ class NVDPipeline:
             # Windows/MacOS settings
             self.driver_path = None  # Will use ChromeDriverManager
     
-    def crawl_nvd_data(self)->list[str]:
-        url = "https://nvd.nist.gov/vuln/data-feeds"
-        json_files:list[str] = []
-        print(f"Initializing WebDriver for platform: {platform.system()}...")
+    # def crawl_nvd_data(self)->list[str]:
+    #     url = "https://nvd.nist.gov/vuln/data-feeds"
+    #     json_files:list[str] = []
+    #     print(f"Initializing WebDriver for platform: {platform.system()}...")
         
-        chrome_options = Options()
-        chrome_options.add_argument("--start-maximized")
-        chrome_options.add_argument("--headless")  # Run Chrome in headless mode
+    #     chrome_options = Options()
+    #     chrome_options.add_argument("--start-maximized")
+    #     chrome_options.add_argument("--headless")  # Run Chrome in headless mode
         
-        # Platform-specific configurations
-        user_data_dir = None
-        if self.is_linux:
-            # Linux-specific options
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
+    #     # Platform-specific configurations
+    #     user_data_dir = None
+    #     if self.is_linux:
+    #         # Linux-specific options
+    #         chrome_options.add_argument("--no-sandbox")
+    #         chrome_options.add_argument("--disable-dev-shm-usage")
             
-            # Create a temporary directory for user data
-            user_data_dir = tempfile.mkdtemp()
-            chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+    #         # Create a temporary directory for user data
+    #         user_data_dir = tempfile.mkdtemp()
+    #         chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
             
-            # Debug checks on Linux
-            debug_checks(chrome_options, user_data_dir, self.driver_path)
+    #         # Debug checks on Linux
+    #         debug_checks(chrome_options, user_data_dir, self.driver_path)
             
-            # Initialize with specific driver path on Linux
-            service = Service(self.driver_path)
-        else:
-            # Windows/Mac: Use ChromeDriverManager
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
+    #         # Initialize with specific driver path on Linux
+    #         service = Service(self.driver_path)
+    #     else:
+    #         # Windows/Mac: Use ChromeDriverManager
+    #         from webdriver_manager.chrome import ChromeDriverManager
+    #         service = Service(ChromeDriverManager().install())
 
-        # Ensure output directory exists
+    #     # Ensure output directory exists
+    #     os.makedirs(self.output_dir, exist_ok=True)
+
+    #     with webdriver.Chrome(service=service, options=chrome_options) as driver:
+    #         print(f"Navigating to {url}...")
+    #         driver.get(url)
+
+    #         # Wait for ZIP links
+    #         print("Waiting for ZIP links to appear...")
+    #         links = WebDriverWait(driver, 20).until(
+    #             EC.presence_of_all_elements_located((By.PARTIAL_LINK_TEXT, 'ZIP'))
+    #         )
+
+    #         # Filter links: must include 'nvdcve-1.1-', 'json', and end with '.zip'
+    #         json_zip_links = []
+    #         for link in links:
+    #             href = link.get_attribute('href')
+    #             if href:
+    #                 href_lower = href.lower()
+    #                 if ("nvdcve-2.0-" in href_lower
+    #                     and "json" in href_lower
+    #                     and href_lower.endswith(".zip")):
+    #                     json_zip_links.append(href)
+
+    #         print("\nFiltered ZIP links to download:")
+    #         for link_url in json_zip_links:
+    #             print(f"  {link_url}")
+
+    #         # Download & unzip each link
+    #         for link_url in json_zip_links:
+    #             print(f"\nDownloading: {link_url}")
+    #             downloaded_zip_path = wget.download(link_url, out=self.output_dir)
+    #             print(f"\nDownloaded file: {downloaded_zip_path}")
+
+    #             # Unzip the file if it ends with .zip
+    #             if downloaded_zip_path.lower().endswith(".zip"):
+    #                 with zipfile.ZipFile(downloaded_zip_path, 'r') as zip_ref:
+    #                     zip_ref.extractall(self.output_dir)
+    #                 os.remove(downloaded_zip_path)
+    #                 print(f"Unzipped and removed: {downloaded_zip_path}")
+
+    #     # Gather all .json files
+    #     for fname in os.listdir(self.output_dir):
+    #         if fname.lower().endswith(".json"):
+    #             full_path = os.path.join(self.output_dir, fname)
+    #             json_files.append(full_path)
+
+    #     print("\nAll JSON files:")
+    #     for f in json_files:
+    #         print(f)
+            
+    #     return json_files
+    def crawl_nvd_data(self) -> List[str]:
         os.makedirs(self.output_dir, exist_ok=True)
 
-        with webdriver.Chrome(service=service, options=chrome_options) as driver:
-            print(f"Navigating to {url}...")
-            driver.get(url)
+        # NVD JSON 2.0 feeds
+        base_urls = [
+            "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-recent.json.zip",
+            "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-modified.json.zip",
+        ]
 
-            # Wait for ZIP links
-            print("Waiting for ZIP links to appear...")
-            links = WebDriverWait(driver, 20).until(
-                EC.presence_of_all_elements_located((By.PARTIAL_LINK_TEXT, 'ZIP'))
-            )
+        # Add yearly feeds as needed
+        for year in range(2002, 2027):  # adjust upper bound if needed
+            base_urls.append(f"https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{year}.json.zip")
 
-            # Filter links: must include 'nvdcve-1.1-', 'json', and end with '.zip'
-            json_zip_links = []
-            for link in links:
-                href = link.get_attribute('href')
-                if href:
-                    href_lower = href.lower()
-                    if ("nvdcve-1.1-" in href_lower
-                        and "json" in href_lower
-                        and href_lower.endswith(".zip")):
-                        json_zip_links.append(href)
+        json_files: List[str] = []
 
-            print("\nFiltered ZIP links to download:")
-            for link_url in json_zip_links:
-                print(f"  {link_url}")
-
-            # Download & unzip each link
-            for link_url in json_zip_links:
+        for link_url in base_urls:
+            try:
                 print(f"\nDownloading: {link_url}")
                 downloaded_zip_path = wget.download(link_url, out=self.output_dir)
                 print(f"\nDownloaded file: {downloaded_zip_path}")
 
-                # Unzip the file if it ends with .zip
                 if downloaded_zip_path.lower().endswith(".zip"):
-                    with zipfile.ZipFile(downloaded_zip_path, 'r') as zip_ref:
+                    with zipfile.ZipFile(downloaded_zip_path, "r") as zip_ref:
                         zip_ref.extractall(self.output_dir)
                     os.remove(downloaded_zip_path)
                     print(f"Unzipped and removed: {downloaded_zip_path}")
 
-        # Gather all .json files
+            except Exception as e:
+                print(f"Failed to download {link_url}: {e}")
+
         for fname in os.listdir(self.output_dir):
             if fname.lower().endswith(".json"):
                 full_path = os.path.join(self.output_dir, fname)
                 json_files.append(full_path)
 
+        json_files = sorted(set(json_files))
+
+        if not json_files:
+            raise RuntimeError("No JSON files were downloaded from NVD.")
+
         print("\nAll JSON files:")
         for f in json_files:
             print(f)
-            
+
         return json_files
     
     def preprocess_files(self, json_files: list[str])->pd.DataFrame:
@@ -381,112 +428,148 @@ class NVDPipeline:
         print(f"Batch complete: {processed} records processed, {skipped} records skipped")
 
     @staticmethod
-    def _parse_single_json_to_df(json_path: str)->pd.DataFrame:
+    def _parse_single_json_to_df(json_path: str) -> pd.DataFrame:
         """
-        Parses a single JSON file from NVD into a DataFrame.
+        Parses a single NVD JSON 2.0 file into a DataFrame.
         """
-        with open(json_path, 'r', errors='ignore') as f:
+        with open(json_path, "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
 
-        cve_items = data.get('CVE_Items', [])
+        vulnerabilities = data.get("vulnerabilities", [])
         rows = []
 
-        for item in cve_items:
-            cve = item.get('cve', {})
-            meta = cve.get('CVE_data_meta', {})
-            impact = item.get('impact', {})
+        for entry in vulnerabilities:
+            cve = entry.get("cve", {})
 
-            cve_id = meta.get('ID')
-            published_date = item.get('publishedDate')
-            description_data = cve.get('description', {}).get('description_data', [])
-            description_value = description_data[0].get('value') if description_data else None
-            num_ref = len(cve.get('references', {}).get('reference_data', []))
+            cve_id = cve.get("id")
+            published_date = cve.get("published")
+            last_modified_date = cve.get("lastModified")
+            vuln_status = cve.get("vulnStatus")
 
-            base_metric_v2 = impact.get('baseMetricV2', {})
-            cvss_v2 = base_metric_v2.get('cvssV2', {})
+            # English description
+            descriptions = cve.get("descriptions", [])
+            description_value = None
+            for d in descriptions:
+                if d.get("lang") == "en":
+                    description_value = d.get("value")
+                    break
+            if description_value is None and descriptions:
+                description_value = descriptions[0].get("value")
 
-            v2version                  = cvss_v2.get('version')
-            v2baseScore                = cvss_v2.get('baseScore')
-            v2accessVector             = cvss_v2.get('accessVector')
-            v2accessComplexity         = cvss_v2.get('accessComplexity')
-            v2authentication           = cvss_v2.get('authentication')
-            v2confidentialityImpact    = cvss_v2.get('confidentialityImpact')
-            v2integrityImpact          = cvss_v2.get('integrityImpact')
-            v2availabilityImpact       = cvss_v2.get('availabilityImpact')
-            v2vectorString             = cvss_v2.get('vectorString')
+            # References
+            references = cve.get("references", [])
+            num_ref = len(references)
 
-            v2impactScore              = base_metric_v2.get('impactScore')
-            v2exploitabilityScore      = base_metric_v2.get('exploitabilityScore')
-            v2userInteractionRequired  = base_metric_v2.get('userInteractionRequired')
-            v2severity                 = base_metric_v2.get('severity')
-            v2obtainUserPrivilege      = cvss_v2.get('obtainUserPrivilege')
-            v2obtainAllPrivilege       = cvss_v2.get('obtainAllPrivilege')
-            v2acInsufInfo              = cvss_v2.get('acInsufInfo')
-            v2obtainOtherPrivilege     = cvss_v2.get('obtainOtherPrivilege')
+            # Weaknesses (e.g. CWE-79)
+            weaknesses = cve.get("weaknesses", [])
+            cwe_list = []
+            for weakness in weaknesses:
+                for desc in weakness.get("description", []):
+                    if desc.get("lang") == "en" and desc.get("value"):
+                        cwe_list.append(desc.get("value"))
+            cwe_value = ";".join(sorted(set(cwe_list))) if cwe_list else None
 
-            base_metric_v3 = impact.get('baseMetricV3', {})
-            cvss_v3 = base_metric_v3.get('cvssV3', {})
+            metrics = cve.get("metrics", {})
 
-            v3version                  = cvss_v3.get('version')
-            v3baseScore                = cvss_v3.get('baseScore')
-            v3attackVector             = cvss_v3.get('attackVector')
-            v3attackComplexity         = cvss_v3.get('attackComplexity')
-            v3privilegesRequired       = cvss_v3.get('privilegesRequired')
-            v3userInteraction          = cvss_v3.get('userInteraction')
-            v3scope                    = cvss_v3.get('scope')
-            v3confidentialityImpact    = cvss_v3.get('confidentialityImpact')
-            v3integrityImpact          = cvss_v3.get('integrityImpact')
-            v3availabilityImpact       = cvss_v3.get('availabilityImpact')
-            v3vectorString             = cvss_v3.get('vectorString')
+            # -------------------------
+            # CVSS v2
+            # -------------------------
+            cvss_v2_list = metrics.get("cvssMetricV2", [])
+            cvss_v2_entry = cvss_v2_list[0] if cvss_v2_list else {}
+            cvss_v2 = cvss_v2_entry.get("cvssData", {})
 
-            v3impactScore              = base_metric_v3.get('impactScore')
-            v3exploitabilityScore      = base_metric_v3.get('exploitabilityScore')
-            v3baseSeverity             = cvss_v3.get('baseSeverity')
+            v2version = cvss_v2.get("version")
+            v2baseScore = cvss_v2.get("baseScore")
+            v2accessVector = cvss_v2.get("accessVector")
+            v2accessComplexity = cvss_v2.get("accessComplexity")
+            v2authentication = cvss_v2.get("authentication")
+            v2confidentialityImpact = cvss_v2.get("confidentialityImpact")
+            v2integrityImpact = cvss_v2.get("integrityImpact")
+            v2availabilityImpact = cvss_v2.get("availabilityImpact")
+            v2vectorString = cvss_v2.get("vectorString")
+
+            v2impactScore = cvss_v2_entry.get("impactScore")
+            v2exploitabilityScore = cvss_v2_entry.get("exploitabilityScore")
+            v2userInteractionRequired = cvss_v2_entry.get("userInteractionRequired")
+            v2severity = cvss_v2_entry.get("baseSeverity") or cvss_v2_entry.get("severity")
+            v2obtainUserPrivilege = cvss_v2_entry.get("obtainUserPrivilege")
+            v2obtainAllPrivilege = cvss_v2_entry.get("obtainAllPrivilege")
+            v2acInsufInfo = cvss_v2_entry.get("acInsufInfo")
+            v2obtainOtherPrivilege = cvss_v2_entry.get("obtainOtherPrivilege")
+
+            # -------------------------
+            # CVSS v3.1 preferred, then v3.0
+            # -------------------------
+            cvss_v3_list = metrics.get("cvssMetricV31", []) or metrics.get("cvssMetricV30", [])
+            cvss_v3_entry = cvss_v3_list[0] if cvss_v3_list else {}
+            cvss_v3 = cvss_v3_entry.get("cvssData", {})
+
+            v3version = cvss_v3.get("version")
+            v3baseScore = cvss_v3.get("baseScore")
+            v3attackVector = cvss_v3.get("attackVector")
+            v3attackComplexity = cvss_v3.get("attackComplexity")
+            v3privilegesRequired = cvss_v3.get("privilegesRequired")
+            v3userInteraction = cvss_v3.get("userInteraction")
+            v3scope = cvss_v3.get("scope")
+            v3confidentialityImpact = cvss_v3.get("confidentialityImpact")
+            v3integrityImpact = cvss_v3.get("integrityImpact")
+            v3availabilityImpact = cvss_v3.get("availabilityImpact")
+            v3vectorString = cvss_v3.get("vectorString")
+
+            v3impactScore = cvss_v3_entry.get("impactScore")
+            v3exploitabilityScore = cvss_v3_entry.get("exploitabilityScore")
+            v3baseSeverity = cvss_v3.get("baseSeverity") or cvss_v3_entry.get("baseSeverity")
 
             rows.append({
-                'cveID': cve_id,
-                'publishedDate': published_date,
-                'description_value': description_value,
-                'num_reference': num_ref,
-                'v2version': v2version,
-                'v2baseScore': v2baseScore,
-                'v2accessVector': v2accessVector,
-                'v2accessComplexity': v2accessComplexity,
-                'v2authentication': v2authentication,
-                'v2confidentialityImpact': v2confidentialityImpact,
-                'v2integrityImpact': v2integrityImpact,
-                'v2availabilityImpact': v2availabilityImpact,
-                'v2vectorString': v2vectorString,
-                'v2impactScore': v2impactScore,
-                'v2exploitabilityScore': v2exploitabilityScore,
-                'v2userInteractionRequired': v2userInteractionRequired,
-                'v2severity': v2severity,
-                'v2obtainUserPrivilege': v2obtainUserPrivilege,
-                'v2obtainAllPrivilege': v2obtainAllPrivilege,
-                'v2acInsufInfo': v2acInsufInfo,
-                'v2obtainOtherPrivilege': v2obtainOtherPrivilege,
-                'v3version': v3version,
-                'v3baseScore': v3baseScore,
-                'v3attackVector': v3attackVector,
-                'v3attackComplexity': v3attackComplexity,
-                'v3privilegesRequired': v3privilegesRequired,
-                'v3userInteraction': v3userInteraction,
-                'v3scope': v3scope,
-                'v3confidentialityImpact': v3confidentialityImpact,
-                'v3integrityImpact': v3integrityImpact,
-                'v3availabilityImpact': v3availabilityImpact,
-                'v3vectorString': v3vectorString,
-                'v3impactScore': v3impactScore,
-                'v3exploitabilityScore': v3exploitabilityScore,
-                'v3baseSeverity': v3baseSeverity,
+                "cveID": cve_id,
+                "publishedDate": published_date,
+                "lastModifiedDate": last_modified_date,
+                "vulnStatus": vuln_status,
+                "description_value": description_value,
+                "num_reference": num_ref,
+                "cwe": cwe_value,
+
+                "v2version": v2version,
+                "v2baseScore": v2baseScore,
+                "v2accessVector": v2accessVector,
+                "v2accessComplexity": v2accessComplexity,
+                "v2authentication": v2authentication,
+                "v2confidentialityImpact": v2confidentialityImpact,
+                "v2integrityImpact": v2integrityImpact,
+                "v2availabilityImpact": v2availabilityImpact,
+                "v2vectorString": v2vectorString,
+                "v2impactScore": v2impactScore,
+                "v2exploitabilityScore": v2exploitabilityScore,
+                "v2userInteractionRequired": v2userInteractionRequired,
+                "v2severity": v2severity,
+                "v2obtainUserPrivilege": v2obtainUserPrivilege,
+                "v2obtainAllPrivilege": v2obtainAllPrivilege,
+                "v2acInsufInfo": v2acInsufInfo,
+                "v2obtainOtherPrivilege": v2obtainOtherPrivilege,
+
+                "v3version": v3version,
+                "v3baseScore": v3baseScore,
+                "v3attackVector": v3attackVector,
+                "v3attackComplexity": v3attackComplexity,
+                "v3privilegesRequired": v3privilegesRequired,
+                "v3userInteraction": v3userInteraction,
+                "v3scope": v3scope,
+                "v3confidentialityImpact": v3confidentialityImpact,
+                "v3integrityImpact": v3integrityImpact,
+                "v3availabilityImpact": v3availabilityImpact,
+                "v3vectorString": v3vectorString,
+                "v3impactScore": v3impactScore,
+                "v3exploitabilityScore": v3exploitabilityScore,
+                "v3baseSeverity": v3baseSeverity,
             })
 
         df = pd.DataFrame(rows)
 
-        # Convert publishedDate to datetime.date if present
-        if 'publishedDate' in df.columns and not df['publishedDate'].empty:
-            df['publishedDate'] = pd.to_datetime(df['publishedDate'], format='%Y-%m-%dT%H:%MZ', errors='coerce')
-            df['publishedDate'] = df['publishedDate'].dt.date
+        if not df.empty:
+            if "publishedDate" in df.columns:
+                df["publishedDate"] = pd.to_datetime(df["publishedDate"], errors="coerce").dt.date
+            if "lastModifiedDate" in df.columns:
+                df["lastModifiedDate"] = pd.to_datetime(df["lastModifiedDate"], errors="coerce").dt.date
 
         return df
 
@@ -589,7 +672,7 @@ def main():
         "bolt://localhost:7687",
         auth=("neo4j", "Vanly180705!")
     )
-
+    assert_neo4j_connection(driver)
     nvd_pipeline = NVDPipeline(driver)
     
     # Run the complete pipeline

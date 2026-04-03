@@ -200,3 +200,12 @@ def data_summary(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Add numeric column statistics
     numeric_cols = df.select_dtypes(include=np.number).columns
+
+def assert_neo4j_connection(driver):
+    try:
+        driver.verify_connectivity()
+        with driver.session() as session:
+            session.run("RETURN 1").consume()
+        return True
+    except Exception as e:
+        raise RuntimeError(f"Neo4j connection failed: {e}")
