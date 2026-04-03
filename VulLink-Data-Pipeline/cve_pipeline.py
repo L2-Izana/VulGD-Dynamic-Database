@@ -1,5 +1,6 @@
 import csv
 from urllib.request import urlopen
+import os
 
 from bs4 import BeautifulSoup
 import neo4j
@@ -8,6 +9,7 @@ import neo4j
 class CVEPipeline:
     def __init__(self, neo4j_driver: neo4j.GraphDatabase.driver):
         self.neo4j_driver = neo4j_driver
+        os.makedirs("./datasource", exist_ok=True)  
         self.saved_df = "./datasource/Vulnerability_HAS_EXPLOIT_Exploit_relationship.csv"
 
     def run(self):
