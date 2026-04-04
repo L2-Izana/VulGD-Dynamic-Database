@@ -1,185 +1,327 @@
 import os
-import traceback
-from typing import Tuple
-import neo4j
 import csv
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-import pandas as pd
-import numpy as np
-import random
-import requests
 import re
 import time
+import random
+import sys
+import traceback
+from typing import Optional, Tuple
+from urllib.parse import urlparse
+
+import neo4j
+import pandas as pd
+from bs4 import BeautifulSoup
+from loguru import logger
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 class CVEDetailsPipeline:
     def __init__(self, neo4j_driver: neo4j.GraphDatabase.driver):
         self.neo4j_driver = neo4j_driver
+
         self.vul_weakness_file = "./datasource/VulnerabilityNodesAddProperties.csv"
-        self.vul_weakness_header = ["cveID", "cweID", "vulnerabilityType"]
+        self.vul_weakness_header = ["cveID", "GainedAccess", "CWEID", "VulnerabilityType"]
+
         self.vul_domain_file = "./datasource/DomainNodes_Vulnerability_HAS_REFERENCE_Domain_relationship.csv"
         self.vul_domain_header = ["cveID", "domainName"]
-        self.vul_product_file = "./datasource/ProductNodes_Vulnerability_HAS_REFERENCE_Product_relationship.csv"
-        self.vul_product_header = ["cveID", "productType", "vendorName", "productName", "numOfVersion"] 
+
+        self.vul_product_file = "./datasource/ProductNodes_VendorNodes_Vulnerability_AFFECTS_Product_BELONGS_TO_Vendor.csv"
+        self.vul_product_header = ["cveID", "ProductType", "Vendor", "Product", "Nversions"]
+
         self.affect_property_file = "./datasource/AffectsAddProperty.csv"
-        self.affect_property_header = ["cveID", "productName", "version"]
+        self.affect_property_header = ["cveID", "Product", "Version"]
+
         self.user_agents = [
-            'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7',
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.75.14 (KHTML, like Gecko) Version/7.0.3 Safari/537.75.14",
-            "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Win64; x64; Trident/6.0)",
-            'Mozilla/5.0 (Windows; U; Windows NT 5.1; it; rv:1.8.1.11) Gecko/20071127 Firefox/2.0.0.11',
-            'Mozilla/5.0 (compatible; Konqueror/3.5; Linux) KHTML/3.5.5 (like Gecko) (Kubuntu)',
-            'Lynx/2.8.5rel.1 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/1.2.9',
-            "Mozilla/5.0 (X11; Linux i686) AppleWebKit/535.7 (KHTML, like Gecko) Ubuntu/11.04 Chromium/16.0.912.77 Chrome/16.0.912.77 Safari/535.7",
-            "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:10.0) Gecko/20100101 Firefox/10.0 "
-        ] 
-        self.WRITE_BATCH_SIZE=10
-        self.MIGRATE_BATCH_SIZE=500
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:124.0) Gecko/20100101 Firefox/124.0",
+        ]
 
+        self.WRITE_BATCH_SIZE = 10
+        self.MIGRATE_BATCH_SIZE = 500
 
-    def run(self):
-        # --- Step 1: Read the list of CVE IDs ---
-        csv_path = "./datasource/VulnerabilityNodes.csv"
-        df = self._read_csv_with_fallback_encoding(csv_path)
-        cveID_list = df['cveID'].tolist()
-        if not cveID_list:
-            raise ValueError("Could not read CSV file with any of the attempted encodings")
-        print(f"Processing {len(cveID_list)} CVE IDs")
+        self._setup_logger()
+        os.makedirs("./datasource", exist_ok=True)
 
-        # Add resumption capability
-        completed_cves_file = "./datasource/completed_cves.txt"
-        completed_cveids = set()
-        
-        if os.path.exists(completed_cves_file):
-            with open(completed_cves_file, "r") as f:
-                completed_cveids = set(line.strip() for line in f)
-            print(f"Found {len(completed_cveids)} previously completed CVEs, will resume from there")
-        
-        # Filter out already completed ones
-        remaining_cves = [cve for cve in cveID_list if cve not in completed_cveids]
-        print(f"Remaining CVEs to process: {len(remaining_cves)} out of {len(cveID_list)}")
-        
-        # --- Step 2: Prepare output directories and files ---
+    def _setup_logger(self) -> None:
+        os.makedirs("./logs", exist_ok=True)
+        logger.remove()
+        logger.add(
+            sys.stdout,
+            level="INFO",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}",
+        )
+        logger.add(
+            "./logs/cve_details_pipeline.log",
+            level="INFO",
+            rotation="10 MB",
+            retention=5,
+            encoding="utf-8",
+        )
+
+    def _read_csv_with_fallback_encoding(self, csv_path: str) -> pd.DataFrame:
+        encodings = ["utf-8", "utf-8-sig", "latin1", "cp1252"]
+        last_error = None
+
+        for enc in encodings:
+            try:
+                df = pd.read_csv(csv_path, encoding=enc, low_memory=False)
+                logger.info(f"Loaded CSV {csv_path} with encoding={enc}, shape={df.shape}")
+                return df
+            except Exception as e:
+                last_error = e
+
+        raise ValueError(f"Could not read CSV file {csv_path}. Last error: {last_error}")
+
+    def _prepare_output_files(self) -> None:
         for file_path, file_header in zip(
-            [self.vul_weakness_file, self.vul_domain_file, self.vul_product_file, self.affect_property_file], 
-            [self.vul_weakness_header, self.vul_domain_header, self.vul_product_header, self.affect_property_header]
+            [
+                self.vul_weakness_file,
+                self.vul_domain_file,
+                self.vul_product_file,
+                self.affect_property_file,
+            ],
+            [
+                self.vul_weakness_header,
+                self.vul_domain_header,
+                self.vul_product_header,
+                self.affect_property_header,
+            ],
         ):
-            # Create the directory for the file
             directory = os.path.dirname(file_path)
             os.makedirs(directory, exist_ok=True)
-            
-            # Check if the file exists, if not create it with the header
+
             if not os.path.exists(file_path):
-                print(f"Creating new file: {file_path}")
-                with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                logger.info(f"Creating new file: {file_path}")
+                with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
                     writer = csv.writer(csvfile)
                     writer.writerow(file_header)
             else:
-                print(f"File already exists: {file_path}")
+                logger.info(f"File already exists: {file_path}")
 
+    def _get_last_completed_cveid_from_domain_file(self) -> Optional[str]:
+        """
+        Resume checkpoint = last non-empty cveID in vul_domain_file.
+        """
+        if not os.path.exists(self.vul_domain_file):
+            logger.info(f"Resume file does not exist yet: {self.vul_domain_file}")
+            return None
 
-        # --- Containers for the extracted data ---
-        weakness_data = []  # for vul_weakness_file
-        domain_data = []    # for vul_domain_file
-        product_data = []   # for vul_product_file
-        affect_data = [] # for affect_property_file
+        try:
+            df = self._read_csv_with_fallback_encoding(self.vul_domain_file)
+        except Exception as e:
+            logger.warning(f"Could not read resume file {self.vul_domain_file}: {e}")
+            return None
 
-        # --- Step 3: Process each CVE ---
-        for i, cveID in enumerate(remaining_cves):
-            url = 'https://www.cvedetails.com/cve-details.php?cve_id=' + cveID
-            print(f"\nCrawling details for {cveID} ({i+1}/{len(remaining_cves)}) from {url}")
+        if df.empty or "cveID" not in df.columns:
+            logger.info(f"No usable cveID column found in {self.vul_domain_file}")
+            return None
 
-            # time.sleep(random.uniform(0.01, 0.05))
-            
-            try:
-                user_agent = random.choice(self.user_agents)
-                headers = {'User-Agent': user_agent}
-                r = requests.get(url, headers=headers)
+        cve_series = df["cveID"].dropna().astype(str).str.strip()
+        cve_series = cve_series[cve_series != ""]
 
-                if r.status_code == 429:
-                    print(f"⚠️ Rate limit exceeded (429). Sleeping for 60 seconds...")
-                    time.sleep(60)
-                else:
-                    print(f"🟢 Successfully got the page for {cveID}")
-                    
-                # Extract page content
-                html = r.text
-                soup = BeautifulSoup(html, 'html.parser')
-                h1_tag = soup.find('h1')
-                is_invalid_page = not h1_tag or cveID not in h1_tag.get_text()
-                if is_invalid_page: # This is most likely cvedetails do not provide any info about this cveID
-                    print(f"❌ h1 check failed for {cveID}, likely not a valid page.\nDo not need to retrieve data from this cveID, adding to completed cveIDs.")
-                    with open(completed_cves_file, "a") as f:
-                        f.write(f"{cveID}\n")                
-                    continue  # Skip this CVE
-                
-                # Extract data
-                cwe_ids, vul_categories = self._crawl_data_for_vul_weakness_file(soup)
-                weakness_data.append([cveID, cwe_ids, vul_categories])
-                 
-                # Write the domain data to CSV
-                vul_domains = self._crawl_data_for_vul_domain_file(soup)               
-                for vul_domain in vul_domains:
-                    domain_data.append([cveID, vul_domain])
-                
-            
-                # Write the product data to CSV
-                vul_product_list: list[list[str]] = self._crawl_data_for_vul_product_file(soup)
+        if cve_series.empty:
+            logger.info(f"No completed cveID found in {self.vul_domain_file}")
+            return None
 
-                productlist_nversion_dict = {}  # Dictionary to count product occurrences; keys will be productName, value will be [vul_product_item, numOfVersion]
+        last_cveid = cve_series.iloc[-1]
+        logger.info(f"Last completed cveID from domain file: {last_cveid}")
+        return last_cveid
 
-                for vul_product_item in vul_product_list:
-                    productType, vendor, product, version = vul_product_item
-                    
-                    if product not in productlist_nversion_dict:
-                        productlist_nversion_dict[product] = [vul_product_item, 1]
-                    else:
-                        productlist_nversion_dict[product][1] += 1
-
-
-                # Add the product list and number of affected versions to the product_data list.
-                for vul_productlist_nversion_item in productlist_nversion_dict.values():
-                    productType, vendor, product, version = vul_productlist_nversion_item[0]
-                    nversion = vul_productlist_nversion_item[1]
-                    product_data.append([cveID, productType, vendor, product, nversion])
-
-                # Also add the product and version to the affect_data list.
-                for vul_product_item in vul_product_list:
-                    productType, vendor, product, version = vul_product_item
-                    affect_data.append([cveID, product, version])
-
-                if i % self.WRITE_BATCH_SIZE == 0:
-                    print(f"Writing the data into 4 CSV files...")
-                    self._write_data_to_csv_and_clear_list(weakness_data, domain_data, product_data, affect_data)
-                    
-                # Record this CVE as completed
-                with open(completed_cves_file, "a") as f:
-                    f.write(f"{cveID}\n")
-
-            except Exception as e:
-                print(f"Error processing {cveID}: {e}")
-                time.sleep(5)  # Brief pause after an error
-                continue
-        
-        # Don't forget to write any remaining data
+    def _write_data_to_csv_and_clear_list(self, weakness_data, domain_data, product_data, affect_data) -> None:
         if weakness_data:
-            with open(self.vul_weakness_file, 'a', newline='') as f:
+            with open(self.vul_weakness_file, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerows(weakness_data)
+            logger.info(f"Appended {len(weakness_data)} rows -> {self.vul_weakness_file}")
+            weakness_data.clear()
+
         if domain_data:
-            with open(self.vul_domain_file, 'a', newline='', encoding='utf-8') as f:
+            with open(self.vul_domain_file, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerows(domain_data)
+            logger.info(f"Appended {len(domain_data)} rows -> {self.vul_domain_file}")
+            domain_data.clear()
+
         if product_data:
-            with open(self.vul_product_file, 'a', newline='', encoding='utf-8') as f:
+            with open(self.vul_product_file, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerows(product_data)
+            logger.info(f"Appended {len(product_data)} rows -> {self.vul_product_file}")
+            product_data.clear()
+
         if affect_data:
-            with open(self.affect_property_file, 'a', newline='', encoding='utf-8') as f:
+            with open(self.affect_property_file, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerows(affect_data)
+            logger.info(f"Appended {len(affect_data)} rows -> {self.affect_property_file}")
+            affect_data.clear()
+
+    def _build_driver(self):
+        options = Options()
+        options.add_argument("--start-maximized")
+        # For sites that are sensitive to automation, visible mode is often safer.
+        # Uncomment next line only if headless is confirmed to work.
+        # options.add_argument("--headless=new")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument(f"--user-agent={random.choice(self.user_agents)}")
+
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=options,
+        )
+        return driver
+
+    def _fetch_page_html(self, driver, url: str, cveID: str) -> Optional[str]:
+        try:
+            driver.get(url)
+            # time.sleep(random.uniform(0.1, 0.5))
+            html = driver.page_source
+            logger.info(f"Selenium fetched HTML for {cveID}")
+            return html
+        except Exception as e:
+            logger.error(f"Selenium failed for {cveID}: {e}")
+            return None
+
+    def run(self) -> None:
+        csv_path = "./datasource/VulnerabilityNodes.csv"
+        df = self._read_csv_with_fallback_encoding(csv_path)
+
+        if df is None or df.empty or "cveID" not in df.columns:
+            raise ValueError("Could not read VulnerabilityNodes.csv or missing cveID column")
+
+        cveID_list = df["cveID"].dropna().astype(str).str.strip().tolist()
+        cveID_list = [cve for cve in cveID_list if cve]
+
+        if not cveID_list:
+            raise ValueError("No CVE IDs found in VulnerabilityNodes.csv")
+
+        logger.info(f"Processing source list of {len(cveID_list)} CVE IDs")
+
+        last_completed_cveid = self._get_last_completed_cveid_from_domain_file()
+
+        if last_completed_cveid is None:
+            remaining_cves = cveID_list
+            logger.info("No resume point found. Starting from the beginning.")
+        else:
+            if last_completed_cveid in cveID_list:
+                last_index = cveID_list.index(last_completed_cveid)
+                remaining_cves = cveID_list[last_index + 1:]
+                logger.info(
+                    f"Resuming after {last_completed_cveid}. "
+                    f"Remaining CVEs to process: {len(remaining_cves)} out of {len(cveID_list)}"
+                )
+            else:
+                logger.warning(
+                    f"Resume cveID {last_completed_cveid} not found in VulnerabilityNodes.csv. "
+                    "Starting from the beginning."
+                )
+                remaining_cves = cveID_list
+
+        if not remaining_cves:
+            logger.info("No remaining CVEs to process.")
+            return
+
+        self._prepare_output_files()
+
+        weakness_data = []
+        domain_data = []
+        product_data = []
+        affect_data = []
+
+        driver = None
+        try:
+            driver = self._build_driver()
+
+            for i, cveID in enumerate(remaining_cves, start=1):
+                url = f"https://www.cvedetails.com/cve-details.php?cve_id={cveID}"
+                logger.info(f"Crawling {cveID} ({i}/{len(remaining_cves)}) from {url}")
+
+                try:
+                    html = self._fetch_page_html(driver, url, cveID)
+                    if not html:
+                        logger.error(f"Could not fetch HTML for {cveID}")
+                        continue
+
+                    soup = BeautifulSoup(html, "html.parser")
+                    h1_tag = soup.find("h1")
+                    is_invalid_page = not h1_tag or cveID not in h1_tag.get_text()
+
+                    if is_invalid_page:
+                        logger.warning(f"Invalid or missing CVE details page for {cveID}. Skipping.")
+                        continue
+
+                    # weakness data
+                    # GainedAccess is not available anymore, so keep it as empty string
+                    cwe_ids, vul_categories = self._crawl_data_for_vul_weakness_file(soup)
+                    weakness_data.append([cveID, "", cwe_ids, vul_categories])
+
+                    # domain data
+                    vul_domains = self._crawl_data_for_vul_domain_file(soup)
+                    for vul_domain in vul_domains:
+                        domain_data.append([cveID, vul_domain])
+
+                    # product data + affect data
+                    vul_product_list = self._crawl_data_for_vul_product_file(soup)
+
+                    productlist_nversion_dict = {}
+                    for vul_product_item in vul_product_list:
+                        productType, vendor, product, version = vul_product_item
+
+                        if product not in productlist_nversion_dict:
+                            productlist_nversion_dict[product] = [vul_product_item, 1]
+                        else:
+                            productlist_nversion_dict[product][1] += 1
+
+                    for vul_productlist_nversion_item in productlist_nversion_dict.values():
+                        productType, vendor, product, version = vul_productlist_nversion_item[0]
+                        nversion = vul_productlist_nversion_item[1]
+                        product_data.append([cveID, productType, vendor, product, nversion])
+
+                    for vul_product_item in vul_product_list:
+                        productType, vendor, product, version = vul_product_item
+                        affect_data.append([cveID, product, version])
+
+                    if i % self.WRITE_BATCH_SIZE == 0:
+                        logger.info("Writing batch to CSV files...")
+                        self._write_data_to_csv_and_clear_list(
+                            weakness_data, domain_data, product_data, affect_data
+                        )
+
+                    # time.sleep(random.uniform(0.1, 0.5))
+
+                except KeyboardInterrupt:
+                    logger.warning("Interrupted by user. Flushing remaining buffered rows before exit...")
+                    self._write_data_to_csv_and_clear_list(
+                        weakness_data, domain_data, product_data, affect_data
+                    )
+                    raise
+                except Exception as e:
+                    logger.exception(f"Error processing {cveID}: {e}")
+                    time.sleep(1)
+                    continue
+
+            if weakness_data or domain_data or product_data or affect_data:
+                logger.info("Writing remaining data into CSV files...")
+                self._write_data_to_csv_and_clear_list(
+                    weakness_data, domain_data, product_data, affect_data
+                )
+
+            logger.info("CVE details crawling and append completed successfully.")
+
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
 
     def migrate_data(self):
         self._migrate_vul_weakness_data()
@@ -284,30 +426,6 @@ class CVEDetailsPipeline:
                 results.append([productType, vendor, product, version])
         return results
 
-    def _write_data_to_csv_and_clear_list(self, weakness_data, domain_data, product_data, affect_data):
-        print(f"Writing batch of {len(weakness_data)} records...")
-        with open(self.vul_weakness_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(weakness_data)
-        print(f"Writing batch of {len(domain_data)} records...")
-        with open(self.vul_domain_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerows(domain_data)
-        print(f"Writing batch of {len(product_data)} records...")
-        with open(self.vul_product_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerows(product_data)
-        print(f"Writing batch of {len(affect_data)} records...")
-        with open(self.affect_property_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerows(affect_data)
-
-        weakness_data.clear()  # Reset for new batch
-        domain_data.clear()    # Reset for new batch
-        product_data.clear()   # Reset for new batch
-        affect_data.clear()   # Reset for new batch
-
-    
     def _migrate_vul_weakness_data(self):
         """
         Migrates the vulnerability-weakness relationship data to Neo4j.
@@ -484,20 +602,7 @@ class CVEDetailsPipeline:
             print(f"Error during affect data migration: {e}")
             import traceback
             traceback.print_exc()
-            return False
-        
-        
-    @staticmethod
-    def _read_csv_with_fallback_encoding(file_path) -> pd.DataFrame:
-        """Helper method to read CSV with multiple encoding attempts"""
-        encodings_to_try = ['utf-8', 'utf-8-sig', 'latin1']
-        for encoding in encodings_to_try:
-            try:
-                df = pd.read_csv(file_path, encoding=encoding)
-                return df
-            except UnicodeDecodeError:
-                print(f"Failed with {encoding}, trying next...")
-        return None    
+            return False 
     
     
     def _process_in_batches(self, dataframe: pd.DataFrame, process_row_func, description: str):
@@ -552,5 +657,5 @@ class CVEDetailsPipeline:
 if __name__ == "__main__":
     neo4j_driver = neo4j.GraphDatabase.driver(uri="bolt://localhost:7687", auth=("neo4j", "Vanly180705!"))
     cve_details_pipeline = CVEDetailsPipeline(neo4j_driver)
-    # cve_details_pipeline.run()
-    cve_details_pipeline.migrate_data()
+    cve_details_pipeline.run()
+    # cve_details_pipeline.migrate_data()
