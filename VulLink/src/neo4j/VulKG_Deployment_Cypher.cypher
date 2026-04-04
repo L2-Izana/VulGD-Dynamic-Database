@@ -16,7 +16,7 @@ CALL db.constraints;
 //create Entity with properties: Vulnerability (no relationships)
 CALL apoc.periodic.iterate(
 "
-LOAD CSV WITH HEADERS FROM 'file:///VulnerabilityNodes_FINAL.csv' AS row
+LOAD CSV WITH HEADERS FROM 'file:///VulnerabilityNodes_clean.csv' AS row
 WITH row
 WHERE row.cveID IS NOT NULL AND row.cveID <> ''
 RETURN row
