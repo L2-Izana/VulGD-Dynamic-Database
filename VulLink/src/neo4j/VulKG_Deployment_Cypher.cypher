@@ -433,17 +433,17 @@ WHERE size(v1.exploitDate)>1
 RETURN COUNT(*); //2971
 
 // ############### get results in TABLE IV: Statistics of vulnerability knowledge graph ##############
-MATCH (n:Vulnerability) RETURN count(n); //148609
-MATCH (n:Exploit) RETURN count(n);  //43743
-MATCH (n:Weakness) RETURN count(n); //926
-MATCH (n:Product) RETURN count(n); //44269
-MATCH (n:Vendor) RETURN count(n); //20347
-MATCH (n:Author) RETURN count(n); //9204
-MATCH (n:Domain) RETURN count(n); //9578
+MATCH (n:Vulnerability) RETURN count(n); //324618
+MATCH (n:Exploit) RETURN count(n);  //46605
+MATCH (n:Weakness) RETURN count(n); //962
+MATCH (n:Product) RETURN count(n); //97684
+MATCH (n:Vendor) RETURN count(n); //27575
+MATCH (n:Author) RETURN count(n); //10155
+MATCH (n:Domain) RETURN count(n); //18841
 
-MATCH p=()-[r:EXPLOITS]->() RETURN count(p); //28791
-MATCH p=()-[r:AFFECTS]->() RETURN count(p); //212654
-MATCH p=()-[r:BELONGS_TO]->() RETURN count(p); //47509
-MATCH p=()-[r:EXAMPLE_OF]->() RETURN count(p); //71031
-MATCH p=()-[r:WRITES]->() RETURN count(p); //43743
-MATCH p=()-[r:REFERS_TO]->() RETURN count(p); //429728
+MATCH p=()-[r:EXPLOITS]->() RETURN count(p); //29115
+MATCH p=()-[r:AFFECTS]->() RETURN count(p); //675377
+MATCH p=()-[r:BELONGS_TO]->() RETURN count(p); //87866
+MATCH p=()-[r:EXAMPLE_OF]->() RETURN count(p); //71054
+MATCH p=()-[r:WRITES]->() RETURN count(p); //46605
+MATCH p=()-[r:REFERS_TO]->() RETURN count(p); //750582
