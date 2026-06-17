@@ -1,69 +1,74 @@
 # VulLink: A Dynamic Open-Access Vulnerability Graph Database for Cybersecurity Data Mining
 
-![VulLink System Framework](figures/framework.pdf)
+![VulLink System Framework](figures/framework.png)
 
-**VulLink** is a deployed, dynamic, and open-access vulnerability graph database specifically designed for cybersecurity data mining. Part of the broader **VulGD** ecosystem, it integrates fragmented vulnerability records from multiple public repositories—including the National Vulnerability Database (NVD), Common Vulnerabilities and Exposures (CVE), Common Weakness Enumeration (CWE), Exploit Database (EDB), and CVE Details—into a unified, continuously updated property graph backed by Neo4j.
+**VulLink** is a deployed, dynamic, and open-access vulnerability graph database designed for cybersecurity data mining. It integrates fragmented vulnerability records from multiple public repositories—including NVD, CVE, CWE, ExploitDB, and CVE Details—into a continuously updated Neo4j property graph with explicit cross-source relationships.
 
-This repository contains the full source code for the VulLink system, including the data integration pipeline, the FastAPI backend, the React-based interactive visualizer, system deployment configurations, and downstream evaluation resources. It is prepared to support full reproducibility for our IEEE ICDM 2026 Applied Track submission.
+VulLink provides:
+
+* Automated multi-source ETL pipelines
+* A continuously updated vulnerability graph database
+* Interactive graph visualization and exploration
+* Public API access for graph querying and data retrieval
+* Pre-computed semantic embeddings of vulnerability descriptions
+* Reproducible resources for downstream cybersecurity data mining
+
+The repository contains the complete source code for the VulLink platform, including the ETL pipeline, API backend, visualization interface, deployment resources, and downstream mining demonstrations.
 
 ---
 
-# 🏗️ Repository Architecture
+# Repository Architecture
 
-The project is modularized into four core components to ensure strict separation of concerns across data engineering, backend services, frontend visualization, and experimental code.
+The project is organized into four primary components.
 
-| Component                  | Description                                                                                                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VulLink/**               | Contains system-level configuration, Neo4j database setup utilities, configuration code, deployment scripts, and `analysis.ipynb`.                             |
-| **VulLink-API/**           | A FastAPI-based REST application exposing scalable endpoints for Cypher querying, customized subgraph extraction, and pre-computed LLM embedding retrieval.    |
-| **VulLink-Visualizer/**    | An interactive React frontend featuring a force-directed graph exploration canvas, a live Cypher query console, and modular data export tools (JSON/CSV).      |
-| **VulLink-Data-Pipeline/** | The core ETL and data mining engine containing ingestion, preprocessing, normalization, entity/relation construction, validation, and graph loading pipelines. |
+| Component                  | Description                                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **VulLink/**               | Core configuration files, Neo4j deployment resources, utilities, and analysis notebooks.                       |
+| **VulLink-API/**           | FastAPI backend exposing graph query, subgraph retrieval, and embedding access endpoints.                      |
+| **VulLink-Visualizer/**    | React-based frontend for graph exploration, Cypher querying, and data export.                                  |
+| **VulLink-Data-Pipeline/** | ETL pipeline responsible for vulnerability ingestion, normalization, graph construction, and database updates. |
 
-## Root Directory Layout
+## Directory Layout
 
 ```text
-VulGD-Dynamic-Database/
-├── data/                       # Local data storage directory
-├── figures/                    # System images and documentation assets
-├── VulLink/                    # Configuration and environment scripts
-├── VulLink-API/                # Python FastAPI backend
-├── VulLink-Data-Pipeline/      # ETL and data mining pipelines
-├── VulLink-Visualizer/         # React frontend
-├── .env.development            # Shared development environment variables
-├── data.tar.gz                 # Compressed snapshot data pack
-├── vulkg.tar.gz                # Compressed graph snapshot database archive
-└── docker-compose.yml          # Multi-container orchestrator configuration
+VulLink/
+├── data/
+├── figures/
+├── VulLink/
+├── VulLink-API/
+├── VulLink-Data-Pipeline/
+├── VulLink-Visualizer/
+├── .env.development
+└── docker-compose.yml
 ```
-
-# ⚙️ Prerequisites
-
-To deploy or develop VulLink locally, ensure your machine satisfies the following requirements:
-
-* Docker & Docker Compose (recommended for deployment)
-* Python 3.12.4
-* Node.js v14+
-* Neo4j Community Edition 4.4.11 (if running natively outside Docker)
 
 ---
 
-# 🚀 Quick Start: Full System Deployment
+# Prerequisites
 
-For reviewers and users wanting to deploy the complete VulLink stack (Frontend, API, and Graph Database), we provide a containerized Docker workflow.
+To deploy VulLink locally, install:
 
-## 1. Environment Configuration
+* Docker and Docker Compose
+* Python 3.12+
+* Node.js 14+
+* Neo4j Community Edition 4.4.11 (for native deployment)
 
-Create a `.env` file in the project root:
+---
+
+# Quick Start
+
+## 1. Configure Environment Variables
+
+Create a `.env` file in the repository root.
 
 ```env
 REACT_APP_NEO4J_URL=bolt://localhost:7687
 REACT_APP_NEO4J_USER=neo4j
-REACT_APP_NEO4J_PASSWORD=your_secure_password
+REACT_APP_NEO4J_PASSWORD=your_password
 REACT_APP_BACKEND_URL=http://localhost:8000
 ```
 
-## 2. Launch Container Cluster
-
-Run:
+## 2. Launch the Full Stack
 
 ```bash
 docker-compose up --build -d
@@ -71,137 +76,97 @@ docker-compose up --build -d
 
 ### Access Points
 
-* Web Interface: http://localhost:80
-* API Documentation (Swagger): http://localhost:8000/docs
+* Frontend: http://localhost
+* API Documentation: http://localhost:8000/docs
 
 ---
 
-# 💻 Local Development Setup
+# Local Development
 
-If you prefer running individual services separately for development and debugging, follow the instructions below.
-
-> **Note:** Component execution requires `dotenv-cli` to load variables from `.env.development`.
-
----
-
-## 1. Graph Integration Pipeline (VulLink-Data-Pipeline)
-
-The ETL engine supports incremental updates without rebuilding the graph database from scratch.
-
-Navigate to:
+## Graph Integration Pipeline
 
 ```bash
 cd VulLink-Data-Pipeline
 ```
 
-Configure parameters in:
+Configure:
 
-* `pipeline_config.json`
-* `config.py`
+```text
+pipeline_config.json
+config.py
+```
 
-Run the pipeline:
+Run:
 
 ```bash
 python main.py
 ```
 
-or individual ingestion modules:
+or:
 
 ```bash
 python nvd_pipeline_new.py
 ```
 
-> In production deployments, these operations are automatically executed via scheduled CRON jobs.
-
 ---
 
-## 2. API Backend Layer (VulLink-API)
-
-Navigate to:
+## API Backend
 
 ```bash
 cd VulLink-API
-```
 
-Create and activate a virtual environment:
-
-```bash
 python -m venv venv
-```
-
-Windows:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-Linux/macOS:
-
-```bash
 source venv/bin/activate
-```
 
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-Launch the API server:
+Start API:
 
 ```bash
 npx dotenv-cli -e ..\.env.development -- uvicorn app.main:app --reload
 ```
 
-Run endpoint tests:
+Run tests:
 
-```powershell
-$env:PYTHONPATH="."
+```bash
 npx dotenv-cli -e ..\.env.development -- python tests/test_endpoints.py
 ```
 
 ---
 
-## 3. Frontend Visualizer (VulLink-Visualizer)
-
-Navigate to:
+## Frontend Visualizer
 
 ```bash
 cd VulLink-Visualizer
-```
 
-Install dependencies:
-
-```bash
 npm install
-```
 
-Launch the development server:
-
-```bash
 npx dotenv-cli -e ..\.env.development -- npm start
 ```
 
 ---
 
-# 📊 Downstream Data Mining Utility
+# Database Construction Pipeline
 
-VulLink enables researchers to bypass raw data ingestion and directly perform:
+VulLink continuously integrates vulnerability intelligence from multiple public repositories:
 
-* Vulnerability analysis
-* Exploitability assessment
-* Graph mining
-* Vulnerability clustering
-* Representation learning
+* National Vulnerability Database (NVD)
+* Common Vulnerabilities and Exposures (CVE)
+* Common Weakness Enumeration (CWE)
+* Exploit Database (ExploitDB)
+* CVE Details
 
-## Graph Data & Schema
+The ETL framework performs:
 
-The current deployed snapshot contains:
+1. Data ingestion
+2. Data cleaning and normalization
+3. Entity construction
+4. Relationship construction
+5. Graph validation
+6. Incremental graph loading
 
-* **545,420 nodes**
-* **1,660,599 relationships**
-
-### Node Types
+The graph currently models the following entity types:
 
 * Vulnerability
 * Exploit
@@ -211,59 +176,209 @@ The current deployed snapshot contains:
 * Author
 * Domain
 
-### Relationship Types
+Relationship types include:
 
 * AFFECTS
-* REFERS_TO
-* EXAMPLE_OF
 * EXPLOITS
-* WRITES
+* EXAMPLE_OF
 * BELONGS_TO
+* WRITES
+* REFERS_TO
+
+The resulting graph database contains over **545,000 nodes** and **1.6 million relationships**, supporting large-scale cybersecurity analytics and graph mining.
 
 ---
 
-## Pre-computed Semantic Feature Extraction
+# Deploying the Base VulKG Graph
 
-To facilitate machine learning tasks without requiring expensive local embedding generation, VulLink provides pre-computed vulnerability embeddings generated from:
+VulLink builds upon the **VulKG** graph schema proposed in previous research. The original VulKG schema and graph construction methodology are not contributions of this repository.
+
+VulLink extends this foundation through:
+
+* Dynamic multi-source ETL integration
+* Automated incremental updates
+* Open-access API services
+* Interactive graph visualization
+* Pre-computed semantic embeddings
+* Cybersecurity data mining utilities
+
+To deploy the original VulKG graph:
+
+## Requirements
+
+* Neo4j Desktop 1.4.15 or newer
+* Neo4j Community Edition 4.4.11
+* APOC Plugin
+* Graph Data Science (GDS) Plugin
+
+## Deployment Steps
+
+### 1. Create a Neo4j Project
+
+Create a project named:
+
+```text
+VulKG Project
+```
+
+### 2. Create a Local DBMS
+
+Create a DBMS named:
+
+```text
+Graph DBMS
+```
+
+Use:
+
+```text
+Neo4j Version: 4.4.11
+Password: Neo4j
+```
+
+### 3. Install Plugins
+
+Install:
+
+* APOC
+* Graph Data Science Library
+
+### 4. Enable APOC File Import
+
+Add the following line to the Neo4j configuration file:
+
+```text
+apoc.import.file.enabled=true
+```
+
+This resolves:
+
+```text
+Failed to invoke procedure `apoc.periodic.iterate`
+Import from files not enabled
+```
+
+### 5. Import Data
+
+Copy all required import files into the Neo4j import directory.
+
+### 6. Open Neo4j Browser
+
+Enable:
+
+```text
+Enable multi statement query editor
+```
+
+### 7. Deploy the Graph
+
+Execute the Cypher script:
+
+```text
+VulLink/src/neo4j/VulKG_Deployment_Cypher.cypher
+```
+
+This script creates the original VulKG graph structure used as the foundation for VulLink.
+
+---
+
+# Open Access and Data Retrieval
+
+VulLink exposes graph data through both a Web interface and a public API.
+
+Available functionality includes:
+
+* Interactive graph visualization
+* Cypher query execution
+* Custom subgraph extraction
+* Node export
+* Relationship export
+* Embedding download
+
+Researchers can retrieve task-specific vulnerability subgraphs without rebuilding the underlying database.
+
+Example applications include:
+
+* Vulnerability prioritization
+* Threat intelligence analysis
+* Vulnerability clustering
+* Graph representation learning
+* Link prediction
+* Graph neural network benchmarking
+
+---
+
+# Pre-computed Semantic Features
+
+VulLink provides downloadable embeddings generated from vulnerability descriptions using:
 
 * SecBERT
+* MPNet
 * FastText
-* all-mpnet-base-v2
 
-Supported PCA dimensions:
-
-* 16
-* 32
-* 64
-* 128
-* 256
-* 512
-* 768
-
-Embeddings can be downloaded through either:
-
-* Web Interface
-* API Endpoints
+Embeddings are available through both the Web interface and API with options for preferred vectors' dimension, enabling direct integration into downstream machine learning workflows.
 
 ---
 
-# 📝 Citation
+# Demonstration: Exploitability Prediction
 
-If you use VulLink in academic research, please cite:
+To demonstrate the utility of VulLink for downstream cybersecurity data mining, we provide an exploitability prediction case study.
+
+The task predicts whether a vulnerability is associated with a known public exploit.
+
+The study evaluates:
+
+* Structured vulnerability attributes
+* Vulnerability-description embeddings
+* Graph-context features derived from VulLink
+
+Results show that graph-based models consistently outperform non-graph baselines, highlighting the value of relational vulnerability intelligence for cybersecurity analytics.
+
+This example serves as a reference workflow for:
+
+* Vulnerability prioritization
+* Graph-based security analytics
+* Graph neural network research
+* Cybersecurity representation learning
+
+---
+
+# Cybersecurity Data Mining Applications
+
+VulLink is designed as a reusable graph data infrastructure for cybersecurity research.
+
+Potential downstream applications include:
+
+* Exploitability prediction
+* Vulnerability prioritization
+* Vulnerability clustering
+* Knowledge graph mining
+* Link prediction
+* Graph representation learning
+* Threat intelligence discovery
+* Multi-hop vulnerability analysis
+* Security recommendation systems
+* Graph neural network benchmarking
+
+---
+
+# Citation
+
+If you use VulLink in your research, please cite:
 
 ```bibtex
 @article{do2026vullink,
   title={VulLink: A Dynamic Open-Access Vulnerability Graph Database for Cybersecurity Data Mining},
   author={Do, Luat and Cao, Jinli and Yin, Jiao and Wang, Hua},
-  journal={arXiv preprint [arXiv:2604.06967](https://arxiv.org/pdf/2604.06967)},
+  journal={arXiv preprint arXiv:2604.06967},
   year={2026}
 }
 ```
 
 ---
 
-# 📄 License
+# License
 
 This project is released under the MIT License.
 
-Please refer to the LICENSE files within the root repository and individual subprojects for additional licensing information.
+See the LICENSE files within the repository and component subprojects for additional licensing information.
